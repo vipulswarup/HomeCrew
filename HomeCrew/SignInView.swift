@@ -2,84 +2,93 @@ import SwiftUI
 import AuthenticationServices
 
 struct SignInView: View {
+    @State private var isSignedIn = false  // Track login status
+    @StateObject private var authDelegate = AuthenticationDelegate() // Store delegate to prevent deallocation
+
     var body: some View {
-        VStack {
-            // App Logo
-            Image("AppLogo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 150, height: 150)
-                .padding(.top, 50)
+        if isSignedIn {
+            DashboardView()  // Show dashboard after successful login
+        } else {
+            VStack {
+                // App Logo
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 150, height: 150)
+                    .padding(.top, 50)
 
-            // App Name
-            Text("HomeCrew")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.top, 10)
+                // App Title
+                Text("HomeCrew")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.top, 10)
 
-            // Tagline
-            Text("Manage your House Hold Staff")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundColor(.white.opacity(0.8))
-                .padding(.bottom, 20)
+                // Tagline
+                Text("Manage your Household Staff")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.bottom, 20)
 
-            Spacer()
+                Spacer()
 
-            // Apple Sign-in button
-            SignInWithAppleButton(action: handleSignInWithApple)
+                // Apple Sign-In Button
+                SignInWithAppleButton(onRequest: { request in
+                    handleSignInWithApple()
+                }, onCompletion: { result in
+                    switch result {
+                    case .success(let auth):
+                        print("Authorization successful: \(auth)")
+                    case .failure(let error):
+                        print("Authorization failed: \(error.localizedDescription)")
+                    }
+                })
                 .frame(width: 280, height: 50)
                 .padding()
 
-            Spacer()
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(red: 173/255, green: 101/255, blue: 199/255).ignoresSafeArea()) // Custom background color
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(red: 173/255, green: 101/255, blue: 199/255).ignoresSafeArea()) // #ad65c7
     }
 
-    // Function to handle sign-in
+    /// Handles Sign-In with Apple request
     private func handleSignInWithApple() {
         let request = ASAuthorizationAppleIDProvider().createRequest()
-        request.requestedScopes = [.fullName, .email]
-        
+        request.requestedScopes = [.fullName, .email] // Request user details
+
+        // Assign a completion handler to the delegate
+        authDelegate.completion = { firstName in
+            if let firstName = firstName {
+                UserDefaults.standard.set(firstName, forKey: "firstName")
+            }
+            isSignedIn = true
+        }
+
         let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = authDelegate
         controller.performRequests()
     }
 }
 
-struct SignInWithAppleButton: View {
-    let action: () -> Void // Action callback
+/// Authentication delegate for handling Apple Sign-In responses
+class AuthenticationDelegate: NSObject, ASAuthorizationControllerDelegate, ObservableObject {
+    var completion: ((String?) -> Void)?
 
-    var body: some View {
-        SignInWithAppleButtonView(action: action)
-            .frame(width: 280, height: 50)
-            .cornerRadius(10)
+    /// Called when authentication is successful
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
+            let firstName = credential.fullName?.givenName ?? "User" // Default name if not provided
+            completion?(firstName)
+        } else {
+            completion?(nil)
+        }
+    }
+
+    /// Called when authentication fails
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        print("Sign in with Apple failed: \(error.localizedDescription)")
+        completion?(nil)
     }
 }
 
-struct SignInWithAppleButtonView: UIViewRepresentable {
-    let action: () -> Void
-
-    func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
-        let button = ASAuthorizationAppleIDButton()
-        button.addTarget(context.coordinator, action: #selector(Coordinator.didTapButton), for: .touchUpInside)
-        return button
-    }
-
-    func updateUIView(_ uiView: ASAuthorizationAppleIDButton, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        return Coordinator(action: action)
-    }
-
-    class Coordinator: NSObject {
-        let action: () -> Void
-
-        init(action: @escaping () -> Void) {
-            self.action = action
-        }
-
-        @objc func didTapButton() {
-            action() // Calls handleSignInWithApple()
-        }
-    }
-}
