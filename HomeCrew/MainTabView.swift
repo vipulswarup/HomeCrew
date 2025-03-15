@@ -11,9 +11,9 @@ import SwiftUI
 struct MainTabView: View {
     var body: some View {
         TabView {
-            HomesView()
+            HouseHoldView()
                 .tabItem {
-                    Label("Homes", systemImage: "house.fill")
+                    Label("Households", systemImage: "house.fill")
                 }
             
             StaffView()
