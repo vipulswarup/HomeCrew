@@ -1,94 +1,99 @@
 import SwiftUI
-import AuthenticationServices
+import CloudKit
 
-struct SignInView: View {
-    @State private var isSignedIn = false  // Track login status
-    @StateObject private var authDelegate = AuthenticationDelegate() // Store delegate to prevent deallocation
-
+struct CloudKitAuthView: View {
+    @State private var isCloudAvailable = false
+    @State private var isChecking = true
+    @State private var errorMessage: String?
+    
     var body: some View {
-        if isSignedIn {
-            MainTabView()  // Show dashboard after successful login
-        } else {
-            VStack {
-                // App Logo
-                Image("AppLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 150, height: 150)
-                    .padding(.top, 50)
-
-                // App Title
-                Text("HomeCrew")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.top, 10)
-
-                // Tagline
-                Text("Manage your Household Staff")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
-                    .padding(.bottom, 20)
-
-                Spacer()
-
-                // Apple Sign-In Button
-                SignInWithAppleButton(onRequest: { request in
-                    handleSignInWithApple()
-                }, onCompletion: { result in
-                    switch result {
-                    case .success(let auth):
-                        print("Authorization successful: \(auth)")
-                    case .failure(let error):
-                        print("Authorization failed: \(error.localizedDescription)")
+        Group {
+            if isChecking {
+                // Loading state while checking iCloud status
+                VStack {
+                    ProgressView("Checking iCloud status...")
+                    Text("Please wait...")
+                        .font(.caption)
+                        .padding()
+                }
+            } else if isCloudAvailable {
+                // User is signed in to iCloud, show main app
+                MainTabView()
+            } else {
+                // User needs to sign in to iCloud
+                VStack(spacing: 20) {
+                    Image(systemName: "icloud.slash")
+                        .font(.system(size: 60))
+                        .foregroundColor(.gray)
+                    
+                    Text("iCloud Account Required")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    if let errorMessage = errorMessage {
+                        Text(errorMessage)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                    } else {
+                        Text("Please sign in to iCloud in your device settings to use HomeCrew.")
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     }
-                })
-                .frame(width: 280, height: 50)
+                    
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding()
+                    
+                    Button("Try Again") {
+                        checkiCloudAccountStatus()
+                    }
+                    .padding()
+                }
                 .padding()
-
-                Spacer()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(red: 173/255, green: 101/255, blue: 199/255).ignoresSafeArea()) // Custom background color
+        }
+        .onAppear {
+            checkiCloudAccountStatus()
         }
     }
-
-    /// Handles Sign-In with Apple request
-    private func handleSignInWithApple() {
-        let request = ASAuthorizationAppleIDProvider().createRequest()
-        request.requestedScopes = [.fullName, .email] // Request user details
-
-        // Assign a completion handler to the delegate
-        authDelegate.completion = { firstName in
-            if let firstName = firstName {
-                UserDefaults.standard.set(firstName, forKey: "firstName")
+    
+    private func checkiCloudAccountStatus() {
+        isChecking = true
+        errorMessage = nil
+        
+        CKContainer.default().accountStatus { status, error in
+            DispatchQueue.main.async {
+                isChecking = false
+                
+                if let error = error {
+                    errorMessage = "Error checking iCloud status: \(error.localizedDescription)"
+                    isCloudAvailable = false
+                    return
+                }
+                
+                switch status {
+                case .available:
+                    // User is signed in to iCloud and can use the app
+                    isCloudAvailable = true
+                case .noAccount:
+                    errorMessage = "No iCloud account found. Please sign in to iCloud in Settings."
+                    isCloudAvailable = false
+                case .restricted:
+                    errorMessage = "Your iCloud account is restricted and cannot be used."
+                    isCloudAvailable = false
+                case .couldNotDetermine:
+                    errorMessage = "Could not determine iCloud account status. Please try again."
+                    isCloudAvailable = false
+                @unknown default:
+                    errorMessage = "Unknown iCloud account status. Please try again."
+                    isCloudAvailable = false
+                }
             }
-            isSignedIn = true
         }
-
-        let controller = ASAuthorizationController(authorizationRequests: [request])
-        controller.delegate = authDelegate
-        controller.performRequests()
     }
 }
-
-/// Authentication delegate for handling Apple Sign-In responses
-class AuthenticationDelegate: NSObject, ASAuthorizationControllerDelegate, ObservableObject {
-    var completion: ((String?) -> Void)?
-
-    /// Called when authentication is successful
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-            let firstName = credential.fullName?.givenName ?? "User" // Default name if not provided
-            completion?(firstName)
-        } else {
-            completion?(nil)
-        }
-    }
-
-    /// Called when authentication fails
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        print("Sign in with Apple failed: \(error.localizedDescription)")
-        completion?(nil)
-    }
-}
-
