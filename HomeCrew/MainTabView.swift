@@ -25,10 +25,10 @@ struct MainTabView: View {
                     Label("Households", systemImage: "house.fill")
                 }
             
-            StaffView()
-                .tabItem {
-                    Label("Staff", systemImage: "person.3.fill")
-                }
+//            StaffView()
+//                .tabItem {
+//                    Label("Staff", systemImage: "person.3.fill")
+//                }
             
 //            ReportsView()
 //                .tabItem {

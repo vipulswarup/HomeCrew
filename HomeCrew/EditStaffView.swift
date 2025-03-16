@@ -319,45 +319,61 @@ struct EditStaffView: View {
         isSaving = true
         errorMessage = nil
         
-        // Create staff record
-        let staffRecord = CKRecord(recordType: "Staff", recordID: staff.id)
-        
-        // Set mandatory fields
-        staffRecord["fullLegalName"] = fullLegalName
-        staffRecord["startingDate"] = startingDate
-        staffRecord["leavesAllocated"] = Int(leavesAllocated) ?? 12
-        staffRecord["monthlySalary"] = Double(monthlySalary) ?? 0.0
-        staffRecord["currencyCode"] = currencyCode
-        staffRecord["agreedDuties"] = agreedDuties
-        staffRecord["isActive"] = isActive
-        
-        // Set optional fields
-        if !commonlyKnownAs.isEmpty {
-            staffRecord["commonlyKnownAs"] = commonlyKnownAs
-        } else {
-            staffRecord["commonlyKnownAs"] = nil
-        }
-        
-        if let leavingDate = leavingDate {
-            staffRecord["leavingDate"] = leavingDate
-        } else {
-            staffRecord["leavingDate"] = nil
-        }
-        
-        // Save the staff record first
-        privateDatabase.save(staffRecord) { savedRecord, error in
+        // First, fetch the existing record
+        privateDatabase.fetch(withRecordID: staff.id) { record, error in
             if let error = error {
                 DispatchQueue.main.async {
-                    self.errorMessage = "Failed to save staff: \(error.localizedDescription)"
+                    self.errorMessage = "Failed to fetch staff record: \(error.localizedDescription)"
                     self.isSaving = false
                 }
                 return
             }
             
-            // Delete documents marked for deletion
-            self.deleteMarkedDocuments {
-                // Then save new documents
-                self.saveNewDocuments()
+            guard var staffRecord = record else {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Staff record not found"
+                    self.isSaving = false
+                }
+                return
+            }
+            
+            // Update the record with new values
+            staffRecord["fullLegalName"] = self.fullLegalName
+            staffRecord["startingDate"] = self.startingDate
+            staffRecord["leavesAllocated"] = Int(self.leavesAllocated) ?? 12
+            staffRecord["monthlySalary"] = Double(self.monthlySalary) ?? 0.0
+            staffRecord["currencyCode"] = self.currencyCode
+            staffRecord["agreedDuties"] = self.agreedDuties
+            staffRecord["isActive"] = self.isActive
+            
+            // Set optional fields
+            if !self.commonlyKnownAs.isEmpty {
+                staffRecord["commonlyKnownAs"] = self.commonlyKnownAs
+            } else {
+                staffRecord["commonlyKnownAs"] = nil
+            }
+            
+            if let leavingDate = self.leavingDate {
+                staffRecord["leavingDate"] = leavingDate
+            } else {
+                staffRecord["leavingDate"] = nil
+            }
+            
+            // Save the updated record
+            self.privateDatabase.save(staffRecord) { savedRecord, error in
+                if let error = error {
+                    DispatchQueue.main.async {
+                        self.errorMessage = "Failed to save staff: \(error.localizedDescription)"
+                        self.isSaving = false
+                    }
+                    return
+                }
+                
+                // Delete documents marked for deletion
+                self.deleteMarkedDocuments {
+                    // Then save new documents
+                    self.saveNewDocuments()
+                }
             }
         }
     }
