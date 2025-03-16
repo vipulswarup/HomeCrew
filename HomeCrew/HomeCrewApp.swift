@@ -4,7 +4,7 @@ import SwiftUI
 struct HomeCrewApp: App {
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            SignInView()
         }
     }
 }

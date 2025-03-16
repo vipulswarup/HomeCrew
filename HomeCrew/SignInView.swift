@@ -7,7 +7,7 @@ struct SignInView: View {
 
     var body: some View {
         if isSignedIn {
-            DashboardView()  // Show dashboard after successful login
+            MainTabView()  // Show dashboard after successful login
         } else {
             VStack {
                 // App Logo
