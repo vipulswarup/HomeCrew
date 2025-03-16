@@ -30,15 +30,15 @@ struct MainTabView: View {
                     Label("Staff", systemImage: "person.3.fill")
                 }
             
-            ReportsView()
-                .tabItem {
-                    Label("Reports", systemImage: "chart.bar.fill")
-                }
-            
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "gearshape.fill")
-                }
+//            ReportsView()
+//                .tabItem {
+//                    Label("Reports", systemImage: "chart.bar.fill")
+//                }
+//
+//            ProfileView()
+//                .tabItem {
+//                    Label("Profile", systemImage: "gearshape.fill")
+//                }
         }
         .overlay(
             // Only show the welcome banner briefly when the view appears

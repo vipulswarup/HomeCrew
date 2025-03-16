@@ -3,13 +3,27 @@ import CloudKit
 
 struct HouseHold: Identifiable {
     let id: CKRecord.ID
-    let name: String
-    let address: String
+    var name: String
+    var address: String
+    var notes: String?
     
     init(record: CKRecord) {
         self.id = record.recordID
-        self.name = record["name"] as? String ?? ""
-        self.address = record["address"] as? String ?? ""
+        self.name = record["name"] as? String ?? "Unnamed Household"
+        self.address = record["address"] as? String ?? "No address"
+        self.notes = record["notes"] as? String
+    }
+    
+    func toRecord() -> CKRecord {
+        let record = CKRecord(recordType: "HouseHold")
+        record["name"] = name
+        record["address"] = address
+        
+        if let notes = notes {
+            record["notes"] = notes
+        }
+        
+        return record
     }
 }
 
@@ -27,7 +41,7 @@ struct HouseHoldView: View {
     private let privateDatabase = CKContainer.default().privateCloudDatabase
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 if isLoading {
                     ProgressView("Loading households...")
@@ -61,26 +75,27 @@ struct HouseHoldView: View {
                 } else {
                     List {
                         ForEach(households) { household in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(household.name)
-                                        .font(.headline)
-                                    Text(household.address)
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
+                            NavigationLink(destination: StaffListView(household: household)) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(household.name)
+                                            .font(.headline)
+                                        Text(household.address)
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.vertical, 4)
+                                    
+                                    Spacer()
                                 }
-                                .padding(.vertical, 4)
-                                
-                                Spacer()
-                                
-                                Button(action: {
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
                                     householdToDelete = household
                                     showDeleteConfirmation = true
-                                }) {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.red)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
