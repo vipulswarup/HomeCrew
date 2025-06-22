@@ -1,12 +1,16 @@
 import SwiftUI
 import CloudKit
 import PhotosUI
+import os.log
 
 struct EditStaffView: View {
     let staff: Staff
     var onStaffUpdated: () -> Void
     
     @Environment(\.dismiss) var dismiss
+    
+    // Logger for debugging
+    private let logger = Logger(subsystem: "com.homecrew.staff", category: "EditStaffView")
     
     // Form fields
     @State private var fullLegalName: String
@@ -179,12 +183,15 @@ struct EditStaffView: View {
     }
     
     private var isFormValid: Bool {
-        !fullLegalName.isEmpty &&
+        let valid = !fullLegalName.isEmpty &&
         !monthlySalary.isEmpty &&
         !agreedDuties.isEmpty &&
         (Double(monthlySalary) ?? 0) > 0 &&
-        (Int(leavesAllocated) ?? 0) >= 0 &&
-        (!existingDocuments.isEmpty || !documents.isEmpty)
+        (Int(leavesAllocated) ?? 0) >= 0
+        
+        logger.info("Form validation: name=\(!fullLegalName.isEmpty), salary=\(!monthlySalary.isEmpty), duties=\(!agreedDuties.isEmpty), salaryValue=\(Double(monthlySalary) ?? 0), leaves=\(Int(leavesAllocated) ?? 0), valid=\(valid)")
+        
+        return valid
     }
     
     private func loadStaffDocuments() {
@@ -207,6 +214,7 @@ struct EditStaffView: View {
     private func deleteExistingDocument(_ document: StaffDocument) {
         documentsToDelete.append(document.id)
         existingDocuments.removeAll { $0.id == document.id }
+        logger.info("Deleted existing document: \(document.name), documentsToDelete count: \(documentsToDelete.count)")
     }
     
     private func updateStaffMember() {
@@ -275,15 +283,24 @@ struct EditStaffView: View {
                         return
                     }
                     
-                    // Save new documents
-                    self.documentManager.saveDocuments(documents: self.documents, for: self.staff.id) { error in
-                        DispatchQueue.main.async {
-                            if let error = error {
-                                self.errorMessage = "Error saving documents: \(error.localizedDescription)"
-                            } else {
-                                self.onStaffUpdated()
-                                self.dismiss()
+                    // Only save new documents if there are any
+                    if !self.documents.isEmpty {
+                        self.documentManager.saveDocuments(documents: self.documents, for: self.staff.id) { error in
+                            DispatchQueue.main.async {
+                                if let error = error {
+                                    self.errorMessage = "Error saving documents: \(error.localizedDescription)"
+                                } else {
+                                    self.onStaffUpdated()
+                                    self.dismiss()
+                                }
+                                self.isSaving = false
                             }
+                        }
+                    } else {
+                        // No new documents to save, just complete the update
+                        DispatchQueue.main.async {
+                            self.onStaffUpdated()
+                            self.dismiss()
                             self.isSaving = false
                         }
                     }

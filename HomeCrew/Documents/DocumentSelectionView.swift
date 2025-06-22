@@ -9,6 +9,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import os.log
 
 struct DocumentSelectionView: View {
     @Binding var documents: [DocumentItem]
@@ -17,10 +18,14 @@ struct DocumentSelectionView: View {
     @State private var selectedDocumentURL: URL?
     @State private var selectedItems: [PhotosPickerItem] = []
     
+    // Logger for debugging
+    private let logger = Logger(subsystem: "com.homecrew.documents", category: "DocumentSelectionView")
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Button(action: {
+                    logger.info("Select File button tapped")
                     showingDocumentPicker = true
                 }) {
                     Label("Select File", systemImage: "doc.badge.plus")
@@ -47,17 +52,35 @@ struct DocumentSelectionView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingDocumentPicker) {
+        .fullScreenCover(isPresented: $showingDocumentPicker) {
             DocumentPicker(
                 selectedURL: $selectedDocumentURL,
-                allowedContentTypes: [.pdf, .image, .jpeg, .png, .text]
+                allowedContentTypes: [
+                    UTType.pdf,
+                    UTType.image,
+                    UTType.jpeg,
+                    UTType.png,
+                    UTType.text
+                ].compactMap { $0 }
             )
         }
         .onChange(of: selectedDocumentURL) { _, newURL in
+            logger.info("selectedDocumentURL changed: \(newURL?.path ?? "nil")")
             if let url = newURL {
+                logger.info("Creating DocumentItem for URL: \(url.path)")
+                logger.info("URL extension: \(url.pathExtension)")
+                
+                // Check if file exists
+                let fileExists = FileManager.default.fileExists(atPath: url.path)
+                logger.info("File exists at URL: \(fileExists)")
+                
                 let document = DocumentItem(url: url)
+                logger.info("DocumentItem created: \(document.name)")
                 documents.append(document)
+                logger.info("Document added to array. Total documents: \(documents.count)")
                 selectedDocumentURL = nil
+            } else {
+                logger.warning("selectedDocumentURL is nil")
             }
         }
         .onChange(of: selectedItems) { _, newItems in

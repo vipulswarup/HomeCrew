@@ -58,6 +58,12 @@ class StaffDocumentManager {
     // MARK: - Save Documents
     
     func saveDocuments(documents: [DocumentItem], for staffID: CKRecord.ID, completion: @escaping (Error?) -> Void) {
+        // If no documents to save, just complete successfully
+        if documents.isEmpty {
+            completion(nil)
+            return
+        }
+        
         let group = DispatchGroup()
         var documentReferences: [CKRecord.Reference] = []
         var saveError: Error?
@@ -65,12 +71,15 @@ class StaffDocumentManager {
         // First verify that the staff record exists
         privateDatabase.fetch(withRecordID: staffID) { record, error in
             if let error = error {
+                self.logger.error("Failed to fetch staff record for document saving: \(error.localizedDescription)")
                 completion(error)
                 return
             }
             
             guard record != nil else {
-                completion(NSError(domain: "StaffDocumentManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Staff record not found"]))
+                let error = NSError(domain: "StaffDocumentManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Staff record not found"])
+                self.logger.error("Staff record not found for document saving")
+                completion(error)
                 return
             }
             
@@ -91,6 +100,7 @@ class StaffDocumentManager {
                     }
                     
                     if let error = error {
+                        self.logger.error("Failed to save document record: \(error.localizedDescription)")
                         saveError = error
                         return
                     }
@@ -98,6 +108,7 @@ class StaffDocumentManager {
                     if let savedDoc = savedDoc {
                         let reference = CKRecord.Reference(recordID: savedDoc.recordID, action: .deleteSelf)
                         documentReferences.append(reference)
+                        self.logger.info("Successfully saved document: \(document.name)")
                     }
                 }
             }
@@ -113,12 +124,15 @@ class StaffDocumentManager {
                     // Fetch the staff record again to ensure we have the latest version
                     self.privateDatabase.fetch(withRecordID: staffID) { record, error in
                         if let error = error {
+                            self.logger.error("Failed to fetch staff record for reference update: \(error.localizedDescription)")
                             completion(error)
                             return
                         }
                         
                         guard var staffRecord = record else {
-                            completion(NSError(domain: "StaffDocumentManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Staff record not found"]))
+                            let error = NSError(domain: "StaffDocumentManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Staff record not found during reference update"])
+                            self.logger.error("Staff record not found during reference update")
+                            completion(error)
                             return
                         }
                         
@@ -131,6 +145,11 @@ class StaffDocumentManager {
                         
                         // Save the updated record
                         self.privateDatabase.save(staffRecord) { _, error in
+                            if let error = error {
+                                self.logger.error("Failed to save staff record with document references: \(error.localizedDescription)")
+                            } else {
+                                self.logger.info("Successfully updated staff record with \(documentReferences.count) document references")
+                            }
                             completion(error)
                         }
                     }

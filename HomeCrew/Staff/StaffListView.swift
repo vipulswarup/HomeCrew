@@ -104,7 +104,16 @@ struct StaffListView: View {
                 self.isLoading = false
                 
                 switch result {
-                case .success(let records):
+                case .success(let fetchResult):
+                    let records = fetchResult.matchResults.compactMap { recordID, recordResult in
+                        switch recordResult {
+                        case .success(let record):
+                            return record
+                        case .failure(let error):
+                            print("Failed to fetch record \(recordID): \(error.localizedDescription)")
+                            return nil
+                        }
+                    }
                     self.staffMembers = records.map { Staff(record: $0) }
                     self.staffMembers = Staff.sortedByName(self.staffMembers)
                 case .failure(let error):
