@@ -31,8 +31,23 @@ struct StaffDocument: Identifiable {
     }
     
     var thumbnailImage: UIImage? {
-        if isImage, let fileURL = fileURL {
-            return UIImage(contentsOfFile: fileURL.path)
+        if isImage {
+            // Try to load from cache first
+            if let cachedImage = ImageCache.shared.get(forKey: id.recordName) {
+                return cachedImage
+            }
+            
+            // If not in cache, try to load from file URL
+            if let fileURL = fileURL, let image = UIImage(contentsOfFile: fileURL.path) {
+                ImageCache.shared.set(image, forKey: id.recordName)
+                return image
+            }
+            
+            // If file URL fails, try to load from asset
+            if let asset = asset, let assetURL = asset.fileURL, let image = UIImage(contentsOfFile: assetURL.path) {
+                ImageCache.shared.set(image, forKey: id.recordName)
+                return image
+            }
         }
         return nil
     }
@@ -76,9 +91,62 @@ struct StaffDocument: Identifiable {
     }
 }
 
-// Extension to handle document display
+// MARK: - Image Cache
+
+class ImageCache {
+    static let shared = ImageCache()
+    private let cache = NSCache<NSString, UIImage>()
+    private let fileManager = FileManager.default
+    private let cacheDirectory: URL
+    
+    private init() {
+        cache.countLimit = 100 // Maximum number of images to cache
+        
+        // Create cache directory if it doesn't exist
+        let cachesDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        cacheDirectory = cachesDirectory.appendingPathComponent("ImageCache")
+        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+    }
+    
+    func set(_ image: UIImage, forKey key: String) {
+        // Save to memory cache
+        cache.setObject(image, forKey: key as NSString)
+        
+        // Save to disk cache
+        let fileURL = cacheDirectory.appendingPathComponent(key)
+        if let data = image.jpegData(compressionQuality: 0.7) {
+            try? data.write(to: fileURL)
+        }
+    }
+    
+    func get(forKey key: String) -> UIImage? {
+        // Try memory cache first
+        if let cachedImage = cache.object(forKey: key as NSString) {
+            return cachedImage
+        }
+        
+        // Try disk cache
+        let fileURL = cacheDirectory.appendingPathComponent(key)
+        if let data = try? Data(contentsOf: fileURL),
+           let image = UIImage(data: data) {
+            // Add to memory cache
+            cache.setObject(image, forKey: key as NSString)
+            return image
+        }
+        
+        return nil
+    }
+    
+    func clear() {
+        cache.removeAllObjects()
+        try? fileManager.removeItem(at: cacheDirectory)
+        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+    }
+}
+
+// MARK: - Document Display
+
 extension StaffDocument {
-    // Create a view for displaying this document
     @ViewBuilder
     func documentView() -> some View {
         if isImage, let image = thumbnailImage {

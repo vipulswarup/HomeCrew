@@ -89,6 +89,9 @@ struct CloudKitAuthView: View {
                 case .couldNotDetermine:
                     errorMessage = "Could not determine iCloud account status. Please try again."
                     isCloudAvailable = false
+                case .temporarilyUnavailable:
+                    errorMessage = "iCloud is temporarily unavailable. Please try again later."
+                    isCloudAvailable = false
                 @unknown default:
                     errorMessage = "Unknown iCloud account status. Please try again."
                     isCloudAvailable = false

@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import os.log
 
 struct DocumentPicker: UIViewControllerRepresentable {
     @Binding var selectedURL: URL?
@@ -21,6 +22,9 @@ struct DocumentPicker: UIViewControllerRepresentable {
     class Coordinator: NSObject, UIDocumentPickerDelegate {
         let parent: DocumentPicker
         
+        // Logger for document operations
+        private let logger = Logger(subsystem: "com.homecrew.documents", category: "DocumentPicker")
+        
         init(_ parent: DocumentPicker) {
             self.parent = parent
         }
@@ -31,17 +35,16 @@ struct DocumentPicker: UIViewControllerRepresentable {
             // Create a local copy in the app's temporary directory
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
             
+            copyDocument(from: url, to: tempURL)
+            parent.selectedURL = tempURL
+        }
+        
+        private func copyDocument(from sourceURL: URL, to destinationURL: URL) {
             do {
-                // Remove any existing file
-                if FileManager.default.fileExists(atPath: tempURL.path) {
-                    try FileManager.default.removeItem(at: tempURL)
-                }
-                
-                // Copy the file
-                try FileManager.default.copyItem(at: url, to: tempURL)
-                parent.selectedURL = tempURL
+                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                logger.info("Document copied successfully: \(sourceURL.lastPathComponent)")
             } catch {
-                print("Error copying document: \(error.localizedDescription)")
+                logger.error("Error copying document: \(error.localizedDescription)")
             }
         }
     }

@@ -21,8 +21,9 @@ struct DocumentViewerView: View {
         Group {
             if document.isImage {
                 ImageViewer(document: document, image: $image, isLoaded: $isImageLoaded)
-            } else if document.isPDF {
-                PDFViewerContainer(url: document.fileURL, documentName: document.name)
+            } else if document.isPDF, let fileURL = document.fileURL {
+                PDFKitView(url: fileURL)
+                    .navigationTitle(document.name)
             } else {
                 // For other document types, use QuickLook
                 GenericDocumentViewer(document: document, showingQuickLook: $showingQuickLook)
@@ -45,11 +46,30 @@ struct DocumentViewerView: View {
     private func loadImage() {
         guard let fileURL = document.fileURL else { return }
         
+        // Try to load from cache first
+        if let cachedImage = ImageCache.shared.get(forKey: document.id.recordName) {
+            self.image = cachedImage
+            self.isImageLoaded = true
+            return
+        }
+        
+        // Load from file
         DispatchQueue.global(qos: .userInitiated).async {
             if let loadedImage = UIImage(contentsOfFile: fileURL.path) {
                 DispatchQueue.main.async {
                     self.image = loadedImage
                     self.isImageLoaded = true
+                    // Cache the image
+                    ImageCache.shared.set(loadedImage, forKey: self.document.id.recordName)
+                }
+            } else if let asset = self.document.asset,
+                      let assetURL = asset.fileURL,
+                      let loadedImage = UIImage(contentsOfFile: assetURL.path) {
+                DispatchQueue.main.async {
+                    self.image = loadedImage
+                    self.isImageLoaded = true
+                    // Cache the image
+                    ImageCache.shared.set(loadedImage, forKey: self.document.id.recordName)
                 }
             }
         }
@@ -118,6 +138,28 @@ struct ImageViewer: View {
             }
         }
     }
+}
+
+// MARK: - PDF Viewer
+
+struct PDFKitView: UIViewRepresentable {
+    let url: URL
+    
+    func makeUIView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePage
+        pdfView.displayDirection = .vertical
+        pdfView.usePageViewController(true)
+        
+        if let document = PDFDocument(url: url) {
+            pdfView.document = document
+        }
+        
+        return pdfView
+    }
+    
+    func updateUIView(_ uiView: PDFView, context: Context) {}
 }
 
 // MARK: - Generic Document Viewer

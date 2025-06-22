@@ -1,5 +1,6 @@
 import SwiftUI
 import CloudKit
+import os.log
 
 struct HouseHold: Identifiable {
     let id: CKRecord.ID
@@ -39,6 +40,9 @@ struct HouseHoldView: View {
     
     // Reference to the private database
     private let privateDatabase = CKContainer.default().privateCloudDatabase
+    
+    // Logger for household operations
+    private let logger = Logger(subsystem: "com.homecrew.household", category: "HouseholdView")
     
     var body: some View {
         NavigationStack {
@@ -163,7 +167,7 @@ struct HouseHoldView: View {
                 let household = HouseHold(record: record)
                 fetchedHouseholds.append(household)
             case .failure(let error):
-                print("Error fetching record: \(error.localizedDescription)")
+                self.logger.error("Error fetching record: \(error.localizedDescription)")
             }
         }
         

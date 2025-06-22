@@ -99,22 +99,17 @@ struct StaffListView: View {
         let predicate = NSPredicate(format: "householdID == %@", householdReference)
         let query = CKQuery(recordType: "Staff", predicate: predicate)
         
-        privateDatabase.perform(query, inZoneWith: nil) { records, error in
+        privateDatabase.fetch(withQuery: query, inZoneWith: nil, desiredKeys: nil, resultsLimit: CKQueryOperation.maximumResults) { result in
             DispatchQueue.main.async {
                 self.isLoading = false
                 
-                if let error = error {
+                switch result {
+                case .success(let records):
+                    self.staffMembers = records.map { Staff(record: $0) }
+                    self.staffMembers = Staff.sortedByName(self.staffMembers)
+                case .failure(let error):
                     self.errorMessage = "Failed to load staff: \(error.localizedDescription)"
-                    return
                 }
-                
-                guard let records = records else {
-                    self.staffMembers = []
-                    return
-                }
-                
-                self.staffMembers = records.map { Staff(record: $0) }
-                self.staffMembers = Staff.sortedByName(self.staffMembers)
             }
         }
     }

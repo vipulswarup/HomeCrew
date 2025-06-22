@@ -9,9 +9,13 @@
 import Foundation
 import CloudKit
 import UIKit
+import os.log
 
 class StaffDocumentManager {
     private let privateDatabase = CKContainer.default().privateCloudDatabase
+    
+    // Logger for document operations
+    private let logger = Logger(subsystem: "com.homecrew.documents", category: "StaffDocumentManager")
     
     // MARK: - Fetch Documents
     
@@ -33,7 +37,7 @@ class StaffDocumentManager {
                 let document = StaffDocument(record: record)
                 fetchedDocuments.append(document)
             case .failure(let error):
-                print("Error fetching document record: \(error.localizedDescription)")
+                self.logger.error("Error fetching document record: \(error.localizedDescription)")
             }
         }
         
@@ -58,11 +62,22 @@ class StaffDocumentManager {
         var documentReferences: [CKRecord.Reference] = []
         var saveError: Error?
         
-        // Save each document
-        for document in documents {
-            group.enter()
+        // First verify that the staff record exists
+        privateDatabase.fetch(withRecordID: staffID) { record, error in
+            if let error = error {
+                completion(error)
+                return
+            }
             
-            do {
+            guard record != nil else {
+                completion(NSError(domain: "StaffDocumentManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Staff record not found"]))
+                return
+            }
+            
+            // Save each document
+            for document in documents {
+                group.enter()
+                
                 // Create document record
                 let documentRecord = CKRecord(recordType: "StaffDocument")
                 documentRecord["staffID"] = CKRecord.Reference(recordID: staffID, action: .deleteSelf)
@@ -70,7 +85,7 @@ class StaffDocumentManager {
                 documentRecord["document"] = CKAsset(fileURL: document.url)
                 
                 // Save document record
-                privateDatabase.save(documentRecord) { savedDoc, error in
+                self.privateDatabase.save(documentRecord) { savedDoc, error in
                     defer {
                         group.leave()
                     }
@@ -85,42 +100,43 @@ class StaffDocumentManager {
                         documentReferences.append(reference)
                     }
                 }
-            } catch {
-                saveError = error
-                group.leave()
-            }
-        }
-        
-        // Update staff record with document references if needed
-        group.notify(queue: .main) {
-            if let error = saveError {
-                completion(error)
-                return
             }
             
-            if !documentReferences.isEmpty {
-                // Fetch the staff record first
-                self.privateDatabase.fetch(withRecordID: staffID) { record, error in
-                    if let error = error {
-                        completion(error)
-                        return
-                    }
-                    
-                    guard var staffRecord = record else {
-                        completion(NSError(domain: "StaffDocumentManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Staff record not found"]))
-                        return
-                    }
-                    
-                    // Update the record with document references
-                    staffRecord["idCards"] = documentReferences
-                    
-                    // Save the updated record
-                    self.privateDatabase.save(staffRecord) { _, error in
-                        completion(error)
-                    }
+            // Update staff record with document references if needed
+            group.notify(queue: .main) {
+                if let error = saveError {
+                    completion(error)
+                    return
                 }
-            } else {
-                completion(nil)
+                
+                if !documentReferences.isEmpty {
+                    // Fetch the staff record again to ensure we have the latest version
+                    self.privateDatabase.fetch(withRecordID: staffID) { record, error in
+                        if let error = error {
+                            completion(error)
+                            return
+                        }
+                        
+                        guard var staffRecord = record else {
+                            completion(NSError(domain: "StaffDocumentManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Staff record not found"]))
+                            return
+                        }
+                        
+                        // Get existing references or create new array
+                        var existingReferences = staffRecord["idCards"] as? [CKRecord.Reference] ?? []
+                        existingReferences.append(contentsOf: documentReferences)
+                        
+                        // Update the record with document references
+                        staffRecord["idCards"] = existingReferences
+                        
+                        // Save the updated record
+                        self.privateDatabase.save(staffRecord) { _, error in
+                            completion(error)
+                        }
+                    }
+                } else {
+                    completion(nil)
+                }
             }
         }
     }

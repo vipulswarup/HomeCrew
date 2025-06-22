@@ -26,7 +26,7 @@ struct AddStaffView: View {
     @State private var showingCurrencyPicker = false
     
     // Available currencies
-    let currencies = Locale.isoCurrencyCodes.sorted()
+    let currencies = Locale.Currency.isoCurrencies.map { $0.identifier }.sorted()
     
     // Document manager
     private let documentManager = StaffDocumentManager()

@@ -53,14 +53,14 @@ struct DocumentSelectionView: View {
                 allowedContentTypes: [.pdf, .image, .jpeg, .png, .text]
             )
         }
-        .onChange(of: selectedDocumentURL) { newURL in
+        .onChange(of: selectedDocumentURL) { _, newURL in
             if let url = newURL {
                 let document = DocumentItem(url: url)
                 documents.append(document)
                 selectedDocumentURL = nil
             }
         }
-        .onChange(of: selectedItems) { newItems in
+        .onChange(of: selectedItems) { _, newItems in
             loadSelectedImages(from: newItems)
         }
     }
@@ -132,7 +132,7 @@ struct DocumentItemRow: View {
             }
             
             TextField("Document Name", text: $documentName)
-                .onChange(of: documentName) { newValue in
+                .onChange(of: documentName) { _, newValue in
                     onNameChange(newValue)
                 }
             

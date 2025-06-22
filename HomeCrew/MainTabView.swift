@@ -134,6 +134,10 @@ struct MainTabView: View {
                     self.iCloudStatus = .unavailable("Could not access iCloud")
                     self.cloudKitErrorMessage = "Could not determine iCloud status. Please check your connection."
                     self.showingCloudKitErrorAlert = true
+                case .temporarilyUnavailable:
+                    self.iCloudStatus = .unavailable("iCloud temporarily unavailable")
+                    self.cloudKitErrorMessage = "iCloud is temporarily unavailable. Please try again later."
+                    self.showingCloudKitErrorAlert = true
                 @unknown default:
                     self.iCloudStatus = .unavailable("Unknown iCloud status")
                     self.cloudKitErrorMessage = "Unknown iCloud account status. Please try again."

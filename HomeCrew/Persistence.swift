@@ -6,9 +6,13 @@
 //
 
 import CoreData
+import os.log
 
 struct PersistenceController {
     static let shared = PersistenceController()
+    
+    // Logger for Core Data errors
+    private static let logger = Logger(subsystem: "com.homecrew.persistence", category: "CoreData")
 
     @MainActor
     static let preview: PersistenceController = {
@@ -21,10 +25,9 @@ struct PersistenceController {
         do {
             try viewContext.save()
         } catch {
-            // Replace this implementation with code to handle the error appropriately.
-            // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
+            // Log the error instead of crashing
             let nsError = error as NSError
-            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            logger.error("Failed to save preview data: \(nsError.localizedDescription)")
         }
         return result
     }()
@@ -38,18 +41,18 @@ struct PersistenceController {
         }
         container.loadPersistentStores(completionHandler: { (storeDescription, error) in
             if let error = error as NSError? {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-
-                /*
-                 Typical reasons for an error here include:
-                 * The parent directory does not exist, cannot be created, or disallows writing.
-                 * The persistent store is not accessible, due to permissions or data protection when the device is locked.
-                 * The device is out of space.
-                 * The store could not be migrated to the current model version.
-                 Check the error message to determine what the actual problem was.
-                 */
-                fatalError("Unresolved error \(error), \(error.userInfo)")
+                // Log the error and provide recovery options instead of crashing
+                Self.logger.error("Core Data store failed to load: \(error.localizedDescription)")
+                
+                // Attempt to recover by deleting the store and recreating it
+                if let storeURL = storeDescription.url {
+                    do {
+                        try FileManager.default.removeItem(at: storeURL)
+                        Self.logger.info("Removed corrupted Core Data store, will recreate on next launch")
+                    } catch {
+                        Self.logger.error("Failed to remove corrupted store: \(error.localizedDescription)")
+                    }
+                }
             }
         })
         container.viewContext.automaticallyMergesChangesFromParent = true

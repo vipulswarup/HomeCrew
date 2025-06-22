@@ -1,5 +1,6 @@
 import SwiftUI
 import CloudKit
+import os.log
 
 struct StaffDetailView: View {
     let staff: Staff
@@ -13,6 +14,9 @@ struct StaffDetailView: View {
     
     private let documentManager = StaffDocumentManager()
     private let privateDatabase = CKContainer.default().privateCloudDatabase
+    
+    // Logger for staff operations
+    private let logger = Logger(subsystem: "com.homecrew.staff", category: "StaffDetailView")
     
     var body: some View {
         ScrollView {
@@ -98,14 +102,14 @@ struct StaffDetailView: View {
         
         documentManager.deleteDocuments(with: documentIDs) { error in
             if let error = error {
-                print("Error deleting documents: \(error.localizedDescription)")
+                self.logger.error("Error deleting documents: \(error.localizedDescription)")
                 // Continue with staff deletion anyway
             }
             
             // Then delete the staff record
             privateDatabase.delete(withRecordID: staff.id) { _, error in
                 if let error = error {
-                    print("Error deleting staff: \(error.localizedDescription)")
+                    self.logger.error("Error deleting staff: \(error.localizedDescription)")
                 }
                 
                 // Notify parent view regardless of success/failure
@@ -241,7 +245,7 @@ struct DocumentsView: View {
 
 struct DocumentItemView: View {
     let document: StaffDocument
-    @State private var showingPDFViewer = false
+    @State private var showingDocumentViewer = false
     
     var body: some View {
         VStack {
@@ -252,6 +256,9 @@ struct DocumentItemView: View {
                     .frame(height: 120)
                     .cornerRadius(8)
                     .shadow(radius: 2)
+                    .onTapGesture {
+                        showingDocumentViewer = true
+                    }
             } else {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
@@ -264,9 +271,7 @@ struct DocumentItemView: View {
                 }
                 .shadow(radius: 2)
                 .onTapGesture {
-                    if document.isPDF {
-                        showingPDFViewer = true
-                    }
+                    showingDocumentViewer = true
                 }
             }
             
@@ -277,18 +282,16 @@ struct DocumentItemView: View {
                 .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .sheet(isPresented: $showingPDFViewer) {
-            if document.isPDF {
-                NavigationStack {
-                    PDFViewerContainer(url: document.fileURL, documentName: document.name)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Close") {
-                                    showingPDFViewer = false
-                                }
+        .sheet(isPresented: $showingDocumentViewer) {
+            NavigationStack {
+                DocumentViewerView(document: document)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") {
+                                showingDocumentViewer = false
                             }
                         }
-                }
+                    }
             }
         }
     }
