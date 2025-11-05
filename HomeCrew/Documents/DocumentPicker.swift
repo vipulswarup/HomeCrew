@@ -1,9 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import os.log
-#if canImport(AppKit)
-import AppKit
-#endif
 
 struct DocumentPicker: UIViewControllerRepresentable {
     @Binding var selectedURL: URL?
@@ -15,113 +12,32 @@ struct DocumentPicker: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         logger.info("Creating DocumentPicker with allowed content types: \(allowedContentTypes.map { $0.identifier })")
         
-        // Check if we're on Mac more explicitly
-        let isMac = ProcessInfo.processInfo.isiOSAppOnMac || ProcessInfo.processInfo.isMacCatalystApp
-        logger.info("Platform detection - isMac: \(isMac), isiOSAppOnMac: \(ProcessInfo.processInfo.isiOSAppOnMac), isMacCatalystApp: \(ProcessInfo.processInfo.isMacCatalystApp)")
+        // Use UIDocumentPickerViewController for both iOS and Mac Catalyst
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: allowedContentTypes, asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        picker.shouldShowFileExtensions = true
         
-        if isMac {
-            // Use NSOpenPanel for Mac
-            logger.info("Using NSOpenPanel for Mac")
-            #if canImport(AppKit)
-            let openPanel = NSOpenPanel()
-            openPanel.allowsMultipleSelection = false
-            openPanel.canChooseDirectories = false
-            openPanel.canChooseFiles = true
-            
-            // Convert UTTypes to file extensions
-            var allowedExtensions: [String] = []
-            for utType in allowedContentTypes {
-                if let extensions = utType.tags[.filenameExtension] as? [String] {
-                    allowedExtensions.append(contentsOf: extensions)
-                } else if let preferredExtension = utType.preferredFilenameExtension {
-                    allowedExtensions.append(preferredExtension)
-                }
-            }
-            
-            logger.info("Allowed file extensions: \(allowedExtensions)")
-            openPanel.allowedContentTypes = allowedExtensions
-            
-            // Show the panel
-            openPanel.begin { response in
-                if response == .OK {
-                    if let url = openPanel.url {
-                        logger.info("File selected via NSOpenPanel: \(url.path)")
-                        self.handleSelectedFile(url)
-                    }
-                } else {
-                    logger.info("NSOpenPanel was cancelled")
-                }
-            }
-            #else
-            logger.error("AppKit not available for NSOpenPanel")
-            #endif
-            
-            // Return a dummy view controller since we're using NSOpenPanel
-            return UIViewController()
-        } else {
-            // Use UIDocumentPickerViewController for iOS
-            logger.info("Using UIDocumentPickerViewController for iOS")
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: allowedContentTypes, asCopy: true)
-            picker.allowsMultipleSelection = false
-            picker.delegate = context.coordinator
-            picker.shouldShowFileExtensions = true
-            
-            // Set presentation style for better compatibility
-            picker.modalPresentationStyle = .formSheet
-            
-            logger.info("DocumentPicker configured with delegate: \(picker.delegate != nil)")
-            return picker
-        }
+        // Set presentation style for better compatibility
+        picker.modalPresentationStyle = .formSheet
+        
+        logger.info("DocumentPicker configured with delegate: \(picker.delegate != nil)")
+        return picker
     }
     
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        // Ensure the delegate is set if the view controller is recreated
+        if let picker = uiViewController as? UIDocumentPickerViewController {
+            if picker.delegate == nil {
+                picker.delegate = context.coordinator
+                logger.info("Re-set delegate on picker during update")
+            }
+        }
+    }
     
     func makeCoordinator() -> Coordinator {
         logger.info("Creating Coordinator")
         return Coordinator(self)
-    }
-    
-    private func handleSelectedFile(_ url: URL) {
-        logger.info("Handling selected file: \(url.lastPathComponent)")
-        logger.info("File extension: \(url.pathExtension)")
-        logger.info("File path: \(url.path)")
-        
-        // Check if it's a PDF specifically
-        if url.pathExtension.lowercased() == "pdf" {
-            logger.info("PDF file detected: \(url.lastPathComponent)")
-        }
-        
-        // Create a local copy in the app's temporary directory
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
-        logger.info("Temporary URL: \(tempURL.path)")
-        
-        // Copy the document synchronously
-        if copyDocument(from: url, to: tempURL) {
-            logger.info("Document copied successfully to: \(tempURL.path)")
-            selectedURL = tempURL
-        } else {
-            logger.error("Failed to copy document from \(url.path) to \(tempURL.path)")
-            // Try to use the original URL as fallback
-            logger.info("Using original URL as fallback: \(url.path)")
-            selectedURL = url
-        }
-    }
-    
-    private func copyDocument(from sourceURL: URL, to destinationURL: URL) -> Bool {
-        do {
-            // Remove any existing file at destination
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
-            }
-            
-            // Copy the file
-            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-            logger.info("Document copied successfully: \(sourceURL.lastPathComponent)")
-            return true
-        } catch {
-            logger.error("Error copying document: \(error.localizedDescription)")
-            return false
-        }
     }
     
     class Coordinator: NSObject, UIDocumentPickerDelegate {
@@ -129,6 +45,9 @@ struct DocumentPicker: UIViewControllerRepresentable {
         
         // Logger for document operations
         private let logger = Logger(subsystem: "com.homecrew.documents", category: "DocumentPicker")
+        
+        // Track security-scoped resource access
+        private var securityScopedURLs: [URL] = []
         
         init(_ parent: DocumentPicker) {
             self.parent = parent
@@ -149,13 +68,24 @@ struct DocumentPicker: UIViewControllerRepresentable {
             logger.info("File path: \(url.path)")
             
             // Start accessing the security-scoped resource
-            guard url.startAccessingSecurityScopedResource() else {
-                logger.error("Failed to start accessing security-scoped resource")
+            let hasAccess = url.startAccessingSecurityScopedResource()
+            logger.info("Security-scoped resource access: \(hasAccess)")
+            
+            defer {
+                if hasAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            
+            // Verify file exists and is readable
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                logger.error("Selected file does not exist at path: \(url.path)")
                 return
             }
             
-            defer {
-                url.stopAccessingSecurityScopedResource()
+            guard FileManager.default.isReadableFile(atPath: url.path) else {
+                logger.error("Selected file is not readable at path: \(url.path)")
+                return
             }
             
             // Check if it's a PDF specifically
@@ -163,19 +93,31 @@ struct DocumentPicker: UIViewControllerRepresentable {
                 logger.info("PDF file detected: \(url.lastPathComponent)")
             }
             
-            // Create a local copy in the app's temporary directory
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+            // When using asCopy: true, the file is already copied to a temporary location
+            // We need to copy it to our own temp directory to ensure it persists
+            let uniqueFilename = "\(UUID().uuidString)_\(url.lastPathComponent)"
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueFilename)
             logger.info("Temporary URL: \(tempURL.path)")
             
             // Copy the document synchronously
             if copyDocument(from: url, to: tempURL) {
                 logger.info("Document copied successfully to: \(tempURL.path)")
-                parent.selectedURL = tempURL
+                // Verify the copy exists before setting it
+                if FileManager.default.fileExists(atPath: tempURL.path) {
+                    // Update on main thread
+                    DispatchQueue.main.async {
+                        self.parent.selectedURL = tempURL
+                        self.logger.info("selectedURL set to: \(tempURL.path)")
+                        // Dismiss the picker
+                        controller.dismiss(animated: true) {
+                            self.logger.info("Document picker dismissed after selection")
+                        }
+                    }
+                } else {
+                    logger.error("Copy completed but file not found at destination: \(tempURL.path)")
+                }
             } else {
                 logger.error("Failed to copy document from \(url.path) to \(tempURL.path)")
-                // Try to use the original URL as fallback
-                logger.info("Using original URL as fallback: \(url.path)")
-                parent.selectedURL = url
             }
         }
         
@@ -187,12 +129,20 @@ struct DocumentPicker: UIViewControllerRepresentable {
         
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
             logger.info("Document picker was cancelled")
-            logger.info("Picker controller: \(controller)")
-            logger.info(<#OSLogMessage#>"Picker delegate: \(controller.delegate != nil ? \"set\" : \"nil\")")
+            // Dismiss the picker
+            DispatchQueue.main.async {
+                controller.dismiss(animated: true)
+            }
         }
         
         private func copyDocument(from sourceURL: URL, to destinationURL: URL) -> Bool {
             do {
+                // Verify source file exists
+                guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+                    logger.error("Source file does not exist: \(sourceURL.path)")
+                    return false
+                }
+                
                 // Remove any existing file at destination
                 if FileManager.default.fileExists(atPath: destinationURL.path) {
                     try FileManager.default.removeItem(at: destinationURL)
@@ -200,6 +150,13 @@ struct DocumentPicker: UIViewControllerRepresentable {
                 
                 // Copy the file
                 try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                
+                // Verify the copy was successful
+                guard FileManager.default.fileExists(atPath: destinationURL.path) else {
+                    logger.error("File copy completed but destination file not found")
+                    return false
+                }
+                
                 logger.info("Document copied successfully: \(sourceURL.lastPathComponent)")
                 return true
             } catch {
@@ -207,5 +164,13 @@ struct DocumentPicker: UIViewControllerRepresentable {
                 return false
             }
         }
+        
+        deinit {
+            // Clean up security-scoped resource access
+            for url in securityScopedURLs {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
     }
 }
+

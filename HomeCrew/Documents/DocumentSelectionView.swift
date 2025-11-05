@@ -52,7 +52,7 @@ struct DocumentSelectionView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showingDocumentPicker) {
+        .sheet(isPresented: $showingDocumentPicker) {
             DocumentPicker(
                 selectedURL: $selectedDocumentURL,
                 allowedContentTypes: [
@@ -70,15 +70,30 @@ struct DocumentSelectionView: View {
                 logger.info("Creating DocumentItem for URL: \(url.path)")
                 logger.info("URL extension: \(url.pathExtension)")
                 
-                // Check if file exists
+                // Verify file exists and is readable
                 let fileExists = FileManager.default.fileExists(atPath: url.path)
-                logger.info("File exists at URL: \(fileExists)")
+                let isReadable = FileManager.default.isReadableFile(atPath: url.path)
+                logger.info("File exists at URL: \(fileExists), is readable: \(isReadable)")
+                
+                guard fileExists && isReadable else {
+                    logger.error("Selected file is not accessible: \(url.path)")
+                    selectedDocumentURL = nil
+                    return
+                }
                 
                 let document = DocumentItem(url: url)
                 logger.info("DocumentItem created: \(document.name)")
                 documents.append(document)
                 logger.info("Document added to array. Total documents: \(documents.count)")
+                // Clear the selected URL to allow selecting again
                 selectedDocumentURL = nil
+                
+                // Verify document was actually added
+                if documents.contains(where: { $0.id == document.id }) {
+                    logger.info("Document successfully added and verified in array")
+                } else {
+                    logger.error("Document was not added to array properly")
+                }
             } else {
                 logger.warning("selectedDocumentURL is nil")
             }
@@ -104,17 +119,28 @@ struct DocumentSelectionView: View {
             for item in items {
                 if let data = try? await item.loadTransferable(type: Data.self),
                    let image = UIImage(data: data) {
-                    // Create a temporary file
+                    // Create a temporary file with unique name
                     let tempDirectory = FileManager.default.temporaryDirectory
-                    let fileName = UUID().uuidString + ".jpg"
+                    let fileName = "\(UUID().uuidString)_photo_\(self.documents.count + 1).jpg"
                     let fileURL = tempDirectory.appendingPathComponent(fileName)
                     
                     if let jpegData = image.jpegData(compressionQuality: 0.7) {
-                        try? jpegData.write(to: fileURL)
-                        
-                        DispatchQueue.main.async {
-                            let document = DocumentItem(url: fileURL, name: "Photo \(self.documents.count + 1)")
-                            self.documents.append(document)
+                        do {
+                            try jpegData.write(to: fileURL)
+                            
+                            // Verify file was written successfully
+                            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                                logger.error("Failed to write image file: \(fileURL.path)")
+                                continue
+                            }
+                            
+                            DispatchQueue.main.async {
+                                let document = DocumentItem(url: fileURL, name: "Photo \(self.documents.count + 1)")
+                                self.documents.append(document)
+                                logger.info("Photo added successfully: \(fileURL.path)")
+                            }
+                        } catch {
+                            logger.error("Error writing image file: \(error.localizedDescription)")
                         }
                     }
                 }
